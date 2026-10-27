@@ -17,11 +17,11 @@ export const CreateTodo = async (req, res) => {
                 message: "Todo already exist"
             })
         }
-        const todo = await todoSchema.create({ title, userId: req.userId });
+        const CreateData = await todoSchema.create({ title, userId: req.userId });
         return res.status(201).json({
             success: true,
             message: "todo Created successfully",
-            data: todo
+            data: CreateData
         })
     } catch (error) {
         return res.status(500).json({
@@ -33,11 +33,11 @@ export const CreateTodo = async (req, res) => {
 
 export const getAllTodo = async (req, res) => {
     try {
-        const todo = await todoSchema.find({ userId: req.userId });
+        const AllData = await todoSchema.find({ userId: req.userId });
         return res.status(200).json({
             success: true,
-            message: todo.length === 0 ? "No todo exist" : "todo fetched Successfully",
-            data: todo
+            message: AllData.length === 0 ? "No todo exist" : "todo fetched Successfully",
+            data: AllData
         })
 
     } catch (error) {
@@ -47,22 +47,28 @@ export const getAllTodo = async (req, res) => {
         })
     }
 
-}
-/*
+};
+
 export const delTodo = async (req, res) => {
     try {
-        const id = req.params.id
-        const todo = await todoSchema.findOneAndDelete({ _id: id });
-        if (!todo) {
+        const id = req.params.id;
+        if (!id || id === "") {
+            return res.status(401).json({
+                success: false,
+                message: "Id is required !!!",
+            })
+        }
+        const deleteData = await todoSchema.findOneAndDelete({ _id: id, userId: req.userId })
+        if (!deleteData) {
             return res.status(404).json({
                 success: false,
-                message: "todo not found"
+                message: "User does not have this todo !!!"
             })
         }
         return res.status(200).json({
             success: true,
-            message: "todo deleted successfully",
-            data: todo
+            message: "todo data deleted successfully",
+            data: deleteData
         })
     } catch (error) {
         console.log(error);
@@ -73,13 +79,14 @@ export const delTodo = async (req, res) => {
     }
 };
 
+/*
 export const deleteAllTodo = async (req, res) => {
     try {
         const result = await todoSchema.deleteMany({});
         return res.status(200).json({
             success: true,
             message: result.deletedCount === 0 ? "no todo found" : "all todo deleted successfully ",
-            TodoCount:result.deletedCount
+            TodoCount: result.deletedCount
         })
     } catch (err) {
         return res.status(500).json({
@@ -87,14 +94,20 @@ export const deleteAllTodo = async (req, res) => {
             message: "Internal Server Error"
         })
     }
-}
+}*/
 
 export const updateTodo = async (req, res) => {
     try {
         const id = req.params.id;
-        const { title } = req.body;
-        const todo = await todoSchema.findByIdAndUpdate({ _id: id }, { title }, { new: true });
-        if (!todo) {
+        const title = req.body.title;
+        if (!id || id === "" || !title || title === "") {
+            return res.status(401).json({
+                success: false,
+                message: "id and title is required"
+            })
+        }
+        const updateData = await todoSchema.findOneAndUpdate({ _id: id, userId: req.userId }, { title }, { new: true });
+        if (!updateData) {
             return res.status(404).json({
                 success: false,
                 message: "todo not found",
@@ -104,7 +117,7 @@ export const updateTodo = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "todo Updated successfully",
-            data: todo
+            data: updateData
         });
     } catch (err) {
         console.log(err);
@@ -113,4 +126,6 @@ export const updateTodo = async (req, res) => {
             message: "Internal Server error"
         })
     }
-}*/
+}
+
+

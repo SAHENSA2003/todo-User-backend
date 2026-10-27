@@ -54,6 +54,7 @@ export const deleteAll = async (req, res) => {
         })
     }
 };
+
 export const delUser = async (req, res) => {
     try {
         const id = req.params.id
@@ -77,6 +78,7 @@ export const delUser = async (req, res) => {
         });
     }
 };
+
 export const getAllUser = async (req, res) => {
     try {
         const allUser = await UserSchema.find({});
@@ -92,7 +94,8 @@ export const getAllUser = async (req, res) => {
             message: "Internal server Error"
         })
     }
-}
+};
+
 export const verifyToken = async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -147,7 +150,8 @@ export const verifyToken = async (req, res) => {
             message: "Internal Server Error"
         })
     }
-}
+};
+
 
 export const login = async (req, res) => {
     try {
@@ -187,9 +191,9 @@ export const login = async (req, res) => {
                 return res.status(200).json({
                     success: true,
                     message: "User successfully logged in",
-                    AccessToken : accessToken,
+                    AccessToken: accessToken,
                     RefreshToken: refreshToken,
-                    data:user
+                    data: user
                 })
             } else {
                 return res.status(400).json({
@@ -205,6 +209,6 @@ export const login = async (req, res) => {
             message: "Internal server error"
         })
     }
-}
+};
 
 
