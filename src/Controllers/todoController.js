@@ -107,6 +107,7 @@ export const updateTodo = async (req, res) => {
             })
         }
         const updateData = await todoSchema.findOneAndUpdate({ _id: id, userId: req.userId }, { title }, { new: true });
+        console.log(updateData);
         if (!updateData) {
             return res.status(404).json({
                 success: false,

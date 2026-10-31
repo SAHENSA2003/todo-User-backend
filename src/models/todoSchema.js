@@ -12,4 +12,4 @@ import mongoose from "mongoose";
     }
  }, {timestamps:true});
 
- export default mongoose.model("taskApp",todoSchema);
+ export default mongoose.model("UserTasks",todoSchema);

@@ -2,6 +2,7 @@ import UserSchema from "../models/UserSchema.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { verifyMail } from "../emailVerify/verifymail.js";
+import SessionSchema from "../models/SessionSchema.js";
 
 export const CreateUser = async (req, res) => {
     try {
@@ -16,10 +17,10 @@ export const CreateUser = async (req, res) => {
         };
         const hashedPassword = await bcrypt.hash(Password, 10);
         const User = await UserSchema.create({ UserName, email, Password: hashedPassword });
-        const token = jwt.sign({ id: User._id }, process.env.secretKey, { "expiresIn": "1h" });
+        const token = jwt.sign({ id: User._id }, process.env.secretKey, { "expiresIn": "10m" });
         console.log(token);
 
-        await verifyMail(token, email);
+        await verifyMail(token, email, UserName);
 
         User.token = token;
         await User.save();
@@ -112,12 +113,12 @@ export const verifyToken = async (req, res) => {
                     if (err.name === "TokenExpiredError") {
                         return res.status(401).json({
                             success: false,
-                            message: "Token expired!"
+                            message: "Token expired, Please reVerify on click Re-verify, then verify again!!"
                         })
                     }
                     return res.status(401).json({
                         success: false,
-                        message: "Token invalid!!"
+                        message: "Token invalid!! please re-verify to get the fresh token !!"
                     })
                 }
                 else {
@@ -152,6 +153,71 @@ export const verifyToken = async (req, res) => {
     }
 };
 
+export const reVerifyToken = async (REQ, RES) => {
+    try {
+        const authHeader = REQ.headers.authorization;
+        if (!authHeader || !authHeader.startsWith("Bearer")) {
+            return RES.status(401).json({
+                success: false,
+                message: "Token not found !!"
+            })
+        } else {
+            const token = authHeader.split(" ")[1];
+            let decoded;
+
+            try {
+                decoded = jwt.verify(token, process.env.secretKey, { ignoreExpiration: true });
+                console.log(decoded);
+            } catch (error) {
+                return RES.status(401).json({
+                    success: false,
+                    message: "Token invalid!!!"
+                })
+            };
+
+            const User = await UserSchema.findById(decoded.id);
+            if (!User) {
+                return RES.status(401).json({
+                    success: false,
+                    message: "User not found!!"
+                });
+            };
+
+            if (User.isVerified === true) {
+                return RES.status(400).json({
+                    success: false,
+                    message: "User already verified !!"
+                })
+            };
+
+            if (User.token !== token) {
+                return RES.status(400).json({
+                    success: false,
+                    message: "This token is outdate. Please use the latest token in mail "
+                })
+            }
+            const newToken = jwt.sign({ id: decoded.id }, process.env.secretKey, { "expiresIn": "15m" });
+            User.token = newToken;
+            await User.save();
+            await verifyMail(newToken, User.email);
+
+            return RES.status(200).json({
+                success: true,
+                message: "re-verify successfully , check your mail to verify"
+            })
+
+        }
+
+
+    } catch (error) {
+        console.log(error);
+        return RES.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        })
+    }
+}
+
 
 export const login = async (req, res) => {
     try {
@@ -177,15 +243,31 @@ export const login = async (req, res) => {
                     message: "Incorrect Password"
                 });
             } else if (comparePassword && user.isVerified === true) {
+                //  session limit check...
+                const maxSession = 3;
+                const activeSessions = await SessionSchema.countDocuments({ userId: user._id });
+                 console.log(activeSessions);
+                if (activeSessions >= maxSession) {
+                    await SessionSchema.deleteMany({ userId: user._id });
+                    user.isLoggedIn = false;
+                    await user.save();
+                    return res.status(403).json({
+                        success: false,
+                        message: "Login limit reached (3 devices). All devices have been logged out. Please login again."
+                    });
+                }
+                
+                // await SessionSchema.deleteMany({ userId: user._id });
+                const session = await SessionSchema.create({ userId: user._id });
 
-                const accessToken = jwt.sign({ id: user._id }, process.env.secretKey, {
+                const accessToken = jwt.sign({ id: session._id }, process.env.secretKey, {
                     "expiresIn": "10days"
                 });
 
-                const refreshToken = jwt.sign({ id: user._id }, process.env.secretKey, {
+                const refreshToken = jwt.sign({ id: session._id }, process.env.secretKey, {
                     "expiresIn": "30days"
                 });
-
+                console.log(user._id);
                 user.isLoggedIn = true;
                 await user.save();
                 return res.status(200).json({
@@ -210,5 +292,32 @@ export const login = async (req, res) => {
         })
     }
 };
+
+export const logout = async (req, res) => {
+    try {
+        const Delete = await SessionSchema.findByIdAndDelete(req.sessionId);
+        if(!Delete){
+            return res.status(401).json({
+                success:false,
+                message:"No active session is findOut"
+            })
+        }
+        const remaining = await SessionSchema.countDocuments({userId:req.userId});
+        if(remaining ===0){
+            await UserSchema.findByIdAndUpdate(req.userId,{isLoggedIn:false});
+        }
+        return res.status(200).json({
+            success:true,
+            message:"User successfully loggedOut"
+        });
+    } catch (error) {
+      console.log(error);
+      return res.status(500).json({
+        success:false,
+        message:"Internal server error!!"
+      })  
+    }
+
+}
 
 
