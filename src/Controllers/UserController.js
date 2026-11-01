@@ -12,7 +12,7 @@ export const CreateUser = async (req, res) => {
         if (existMail) {
             return res.status(409).json({
                 success: false,
-                message: "User Already Exist"
+                message: "User Already Exist with this email, please try another email"
             })
         };
         const hashedPassword = await bcrypt.hash(Password, 10);
@@ -246,7 +246,7 @@ export const login = async (req, res) => {
                 //  session limit check...
                 const maxSession = 3;
                 const activeSessions = await SessionSchema.countDocuments({ userId: user._id });
-                 console.log(activeSessions);
+                console.log(activeSessions);
                 if (activeSessions >= maxSession) {
                     await SessionSchema.deleteMany({ userId: user._id });
                     user.isLoggedIn = false;
@@ -256,7 +256,7 @@ export const login = async (req, res) => {
                         message: "Login limit reached (3 devices). All devices have been logged out. Please login again."
                     });
                 }
-                
+
                 // await SessionSchema.deleteMany({ userId: user._id });
                 const session = await SessionSchema.create({ userId: user._id });
 
@@ -296,28 +296,51 @@ export const login = async (req, res) => {
 export const logout = async (req, res) => {
     try {
         const Delete = await SessionSchema.findByIdAndDelete(req.sessionId);
-        if(!Delete){
+        if (!Delete) {
             return res.status(401).json({
-                success:false,
-                message:"No active session is findOut"
+                success: false,
+                message: "No active session is findOut"
             })
         }
-        const remaining = await SessionSchema.countDocuments({userId:req.userId});
-        if(remaining ===0){
-            await UserSchema.findByIdAndUpdate(req.userId,{isLoggedIn:false});
+        const remaining = await SessionSchema.countDocuments({ userId: req.userId });
+        if (remaining === 0) {
+            await UserSchema.findByIdAndUpdate(req.userId, { isLoggedIn: false });
         }
         return res.status(200).json({
-            success:true,
-            message:"User successfully loggedOut"
+            success: true,
+            message: "User successfully loggedOut"
         });
     } catch (error) {
-      console.log(error);
-      return res.status(500).json({
-        success:false,
-        message:"Internal server error!!"
-      })  
+        console.log(error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error!!"
+        })
     }
 
+};
+
+export const logoutAll = async (req, res) => {
+    try {
+        const result = await SessionSchema.deleteMany({ userId: req.userId });
+        if (!result) {
+            return res.status(104).json({
+                success: false,
+                message: "No active Session to logout"
+            })
+        };
+        await UserSchema.findByIdAndUpdate(req.userId, { isLoggedIn: false });
+        return res.status(200).json({
+            success:true,
+            message:"SuccessFully loggedOut form all the devices !!!"
+        })
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            success:false,
+            message:"Internal server error"
+        })
+    }
 }
 
 
