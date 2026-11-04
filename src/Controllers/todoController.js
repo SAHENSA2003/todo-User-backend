@@ -127,6 +127,28 @@ export const updateTodo = async (req, res) => {
             message: "Internal Server error"
         })
     }
-}
+};
+
+export const paginate = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 5;
+        const skip = (page - 1) * limit;
+
+        const todos = await todoSchema.find({ userId: req.userId }).skip(skip).limit(limit);
+
+        return res.status(200).json({
+            success: true,
+            message: todos.length === 0 ? "no todo is of this user" : "todo fetched successfully",
+            data: todos
+        });
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error!!"
+        })
+    }
+};
 
 
