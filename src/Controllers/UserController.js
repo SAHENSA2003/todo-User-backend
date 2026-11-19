@@ -1,8 +1,8 @@
 import UserSchema from "../models/UserSchema.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { verifyMail } from "../emailVerify/verifymail.js";
 import SessionSchema from "../models/SessionSchema.js";
+import { generateAndSendCredential } from "../utils/generateCredentials.js";
 
 export const CreateUser = async (req, res) => {
     try {
@@ -16,14 +16,15 @@ export const CreateUser = async (req, res) => {
             })
         };
         const hashedPassword = await bcrypt.hash(Password, 10);
-        const User = await UserSchema.create({ UserName, email, Password: hashedPassword });
-        const token = jwt.sign({ id: User._id }, process.env.secretKey, { "expiresIn": "10m" });
-        console.log(token);
+        const User = await UserSchema.create({
+            UserName,
+            email,
+            Password: hashedPassword
+        });
 
-        await verifyMail(token, email, UserName);
 
-        User.token = token;
-        await User.save();
+        await generateAndSendCredential(User);
+
         return res.status(200).json({
             success: true,
             message: "User Registered Successfully",
@@ -97,53 +98,85 @@ export const getAllUser = async (req, res) => {
     }
 };
 
-export const verifyToken = async (req, res) => {
+export const verifyUser = async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
+        const otp = req.body.otp;
         if (!authHeader || !authHeader.startsWith("Bearer")) {
             return res.status(401).json({
                 success: false,
                 message: "Token authorization invalid or not found"
             })
-        } else {
-            const token = authHeader.split(" ")[1];
-            jwt.verify(token, process.env.secretKey, async (err, decoded) => {
-                if (err) {
-                    console.log("The error message is ", err.name, err);
-                    if (err.name === "TokenExpiredError") {
-                        return res.status(401).json({
-                            success: false,
-                            message: "Token expired, Please reVerify on click Re-verify, then verify again!!"
-                        })
-                    }
-                    return res.status(401).json({
-                        success: false,
-                        message: "Token invalid!! please re-verify to get the fresh token !!"
-                    })
-                }
-                else {
-                    console.log(decoded);
-                    // const { id } = decoded;
-                    const id = decoded.id;
-                    console.log(id)
-                    const user = await UserSchema.findById(id);
-                    if (!user) {
-                        return res.status(401).json({
-                            success: false,
-                            message: "user not found!!!"
-                        })
-                    } else {
-                        user.token = null;
-                        user.isVerified = true;
-                        await user.save();
-                        return res.status(200).json({
-                            success: true,
-                            message: "user verified successfully"
-                        })
-                    }
-                }
+        };
+
+        if (!otp) {
+            return res.status(400).json({
+                success: false,
+                message: "otp is required to verify, you can find it in your registered mail!!"
             })
-        }
+        };
+        const token = authHeader.split(" ")[1];
+        let decoded;
+        try {
+            decoded = jwt.verify(token, process.env.secretKey);
+            console.log(decoded);
+        } catch (error) {
+            if (error.name === "TokenExpiredError") {
+                return res.status(401).json({
+                    success: false,
+                    message: "Token expired , please go and reverify",
+                })
+            };
+            return res.status(401).json({
+                success: false,
+                message: "Token invalid, please re-verify to get a fresh token and OTP",
+            });
+        };
+
+        const user = await UserSchema.findById(decoded.id);
+        console.log(user)
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: "no user found to verify"
+            })
+        };
+
+        if (user.isVerified) {
+            return res.status(400).json({
+                success: false,
+                message: "User already verified",
+            });
+        };
+        /* checking the otp expiery */
+
+        if (!user.otpExpires || user.otpExpires.getTime() < Date.now()) {
+            return res.status(401).json({
+                success: false,
+                message: "opt expire, please reverify!!"
+            })
+        };
+
+        const matchOtp = await bcrypt.compare(otp, user.otp);
+
+        if (!matchOtp) {
+            return res.status(400).json({
+                success: false,
+                message: "invalid opt !! please give the correct one"
+            })
+        };
+
+        user.isVerified = true;
+        user.otp = undefined;
+        user.otpExpires = undefined;
+        await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "user successfully verified!! you can login now!!",
+            data: user
+        });
+
     } catch (error) {
         console.log(error);
         return res.status(500).json({
@@ -153,70 +186,47 @@ export const verifyToken = async (req, res) => {
     }
 };
 
-export const reVerifyToken = async (REQ, RES) => {
+export const reVerifyUser = async (req, res) => {
     try {
-        const authHeader = REQ.headers.authorization;
-        if (!authHeader || !authHeader.startsWith("Bearer")) {
-            return RES.status(401).json({
+        const email = req.body.email?.trim().toLowerCase();
+        if (!email) {
+            return res.status(400).json({
                 success: false,
-                message: "Token not found !!"
+                message: "email is required to reverify!! please give the emali"
             })
-        } else {
-            const token = authHeader.split(" ")[1];
-            let decoded;
+        };
 
-            try {
-                decoded = jwt.verify(token, process.env.secretKey, { ignoreExpiration: true });
-                console.log(decoded);
-            } catch (error) {
-                return RES.status(401).json({
-                    success: false,
-                    message: "Token invalid!!!"
-                })
-            };
-
-            const User = await UserSchema.findById(decoded.id);
-            if (!User) {
-                return RES.status(401).json({
-                    success: false,
-                    message: "User not found!!"
-                });
-            };
-
-            if (User.isVerified === true) {
-                return RES.status(400).json({
-                    success: false,
-                    message: "User already verified !!"
-                })
-            };
-
-            if (User.token !== token) {
-                return RES.status(400).json({
-                    success: false,
-                    message: "This token is outdate. Please use the latest token in mail "
-                })
-            }
-            const newToken = jwt.sign({ id: decoded.id }, process.env.secretKey, { "expiresIn": "15m" });
-            User.token = newToken;
-            await User.save();
-            await verifyMail(newToken, User.email);
-
-            return RES.status(200).json({
-                success: true,
-                message: "re-verify successfully , check your mail to verify"
+        const user = await UserSchema.findOne({ email: email });
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: "no user found with this mail, please go and , register first!!"
             })
+        };
 
-        }
+        if (user.isVerified) {
+            return res.status(400).json({
+                success: false,
+                message: "user already verified!!"
+            })
+        };
+
+         await generateAndSendCredential(user);
+       
+        return res.status(200).json({
+            success: true,
+            message: "token and otp successfully sent to your email please go and verify your account now !!!"
+        })
 
 
     } catch (error) {
         console.log(error);
-        return RES.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Internal Server Error"
         })
     }
-}
+};
 
 
 export const login = async (req, res) => {
@@ -331,14 +341,14 @@ export const logoutAll = async (req, res) => {
         };
         await UserSchema.findByIdAndUpdate(req.userId, { isLoggedIn: false });
         return res.status(200).json({
-            success:true,
-            message:"SuccessFully loggedOut form all the devices !!!"
+            success: true,
+            message: "SuccessFully loggedOut form all the devices !!!"
         })
     } catch (error) {
         console.log(error);
         return res.status(500).json({
-            success:false,
-            message:"Internal server error"
+            success: false,
+            message: "Internal server error"
         })
     }
 }
