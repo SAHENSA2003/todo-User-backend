@@ -31,6 +31,23 @@ const UserSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
-});
+
+    resetOtp: {
+        type: String,
+    },
+    resetOtpExpires: {
+        type: Date,
+    },
+    resetOtpAttempts: {
+        type: Number,
+        default: 0,
+    },
+    resetOtpSentAt: {
+        type: Date,
+    },
+    passwordChangedAt: {
+        type: Date,
+    },
+},{timestamps:true});
 
 export default mongoose.model("UserData", UserSchema);
