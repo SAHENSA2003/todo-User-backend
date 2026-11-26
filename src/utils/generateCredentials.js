@@ -17,7 +17,7 @@ export const generateAndSendCredential = async (user) => {
     console.log(token);
 
     user.otp = await bcrypt.hash(otp, 10);
-    user.otpExpires = new Date(Date.now() + 1 * 60 * 1000);
+    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
     await user.save();
 

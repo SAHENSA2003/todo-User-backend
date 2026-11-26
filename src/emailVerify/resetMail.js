@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import dotenv from "dotnev/config";
+import dotenv from "dotenv/config";
 
 const resetMail = async (otp, email, userName) => {
   const transporter = nodemailer.createTransport({
@@ -32,3 +32,5 @@ const resetMail = async (otp, email, userName) => {
   const info = await transporter.sendMail(configuration);
   if (info) console.log('mail send successfully');
 };
+
+export default resetMail;

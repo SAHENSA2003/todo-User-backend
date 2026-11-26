@@ -1,15 +1,16 @@
 import UserSchema from "../models/UserSchema.js";
-import bcrypt from "bcrypt";
+import bcrypt, { compare } from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import SessionSchema from "../models/SessionSchema.js";
 import { generateAndSendCredential } from "../utils/generateCredentials.js";
+import resetMail from "../emailVerify/resetMail.js";
 
 export const CreateUser = async (req, res) => {
   try {
     const { UserName, email, Password } = req.body;
     const existMail = await UserSchema.findOne({ email: email });
-    console.log(existMail);
+   
     if (existMail) {
       return res.status(409).json({
         success: false,
@@ -121,7 +122,7 @@ export const verifyUser = async (req, res) => {
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.secretKey);
-      console.log(decoded);
+      
     } catch (error) {
       if (error.name === "TokenExpiredError") {
         return res.status(401).json({
@@ -136,7 +137,7 @@ export const verifyUser = async (req, res) => {
     }
 
     const user = await UserSchema.findById(decoded.id);
-    console.log(user);
+   
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -179,7 +180,7 @@ export const verifyUser = async (req, res) => {
       data: user,
     });
   } catch (error) {
-    console.log(error);
+  
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
@@ -258,7 +259,7 @@ export const login = async (req, res) => {
         const activeSessions = await SessionSchema.countDocuments({
           userId: user._id,
         });
-        console.log(activeSessions);
+        
         if (activeSessions >= maxSession) {
           await SessionSchema.deleteMany({ userId: user._id });
           user.isLoggedIn = false;
@@ -288,7 +289,7 @@ export const login = async (req, res) => {
             expiresIn: "30days",
           },
         );
-        console.log(user._id);
+        
         user.isLoggedIn = true;
         await user.save();
         return res.status(200).json({
@@ -379,11 +380,11 @@ export const forgetPassword = async (req, res) => {
 
     const genericResponse = {
       success: true,
-      message: "an otp has been ",
+      message: "an otp has been, if you use registered email ",
     };
 
     const user = await UserSchema.findOne({ email: email });
-
+    
     if (!user) {
       return res.status(401).json(genericResponse);
     }
@@ -397,7 +398,7 @@ export const forgetPassword = async (req, res) => {
 
     if (
       user.resetOtpSentAt &&
-      Date.now() - user.resetOtpSentAt.getTime() > reset_cooldown
+      Date.now() - user.resetOtpSentAt.getTime() < reset_cooldown
     ) {
       return res.status(201).json(genericResponse);
     }
@@ -410,12 +411,78 @@ export const forgetPassword = async (req, res) => {
     user.resetOtpSentAt = new Date();
     await user.save();
 
-    // await reSendMail(otp,user.email,user.name)
+    await resetMail(otp,user.email,user.UserName);
+    
+    return res.status(200).json(genericResponse);
+
   } catch (error) {
     console.log(error);
     return res.status(500).json({
       success: false,
       message: "Internal server error!!",
+    });
+  }
+};
+
+export const setNewPassword = async (req, res) => {
+  try {
+    const email = req.body.email?.toLowerCase().trim();
+    const otp = req.body.otp;
+    const setPassword1 = req.body.password1;
+    const setPassword2 = req.body.password2;
+
+    if (!email || !otp || !setPassword1 || !setPassword2) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "to set a new pass word! You must give the otp , password1 and password2",
+      });
+    }
+    const user = await UserSchema.findOne({ email: email });
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "user not found with this email ",
+      });
+    }
+    if (!(setPassword1 === setPassword2)) {
+      return res.status(400).json({
+        success: false,
+        message: "Two password must have to same!! ",
+      });
+    }
+
+    if (user.resetOtpExpires < Date.now()) {
+      return res.status(403).json({
+        success: false,
+        message: "This is an expire otp , please do forget password again!!",
+      });
+    }
+    const compare = await bcrypt.compare(otp, user.resetOtp);
+   
+    if (!compare) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Otp!!",
+      });
+    }
+    const newPassword = await bcrypt.hash(setPassword1, 10);
+
+    user.Password = newPassword;
+    user.resetOtp = undefined;
+    user.resetOtpExpires = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "password change successfully !! you can go to login",
+      data: user,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
     });
   }
 };
